@@ -148,6 +148,24 @@ Triage and compare multiple dumps:
 
 Add `--json` to query commands for machine-readable output. Add `--strict` to reject structurally incomplete dumps.
 
+## Recovering incomplete kernel dumps
+
+Kernel dumps are read leniently by default. If the decrypted diagnostic header
+is truncated or unrecognized, the parser still exposes the container metadata
+and preserves every available plaintext byte. Missing process/thread identities,
+registers, and backtraces are not inferred from unrelated payload bytes.
+
+```sh
+./psp2-core-parse analyze dump.psp2kerndmp --json
+./psp2-core-parse extract dump.psp2kerndmp --blob --output payload.bin
+```
+
+Such a dump remains incomplete (`complete: false` / `valid_core: false`), and
+`--strict` still rejects it. Without a usable diagnostic header, triage groups
+only identical input files, not an inferred common crash site. Extracted
+plaintext is not authenticated or unpadded; it may contain log fragments or
+other uninterpreted data rather than recoverable crash records.
+
 ## Credits
 
 * Kernel dumps: [Princess-of-Sleeping/psp2kerndmp-parser](https://github.com/Princess-of-Sleeping/psp2kerndmp-parser)
