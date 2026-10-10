@@ -6,6 +6,51 @@ Analyze a PlayStation Vita psp2core dump:
 ./psp2-core-parse analyze dump.psp2dmp
 ```
 
+## Encrypted system dumps
+
+Raw ELF, gzip-compressed `.psp2dmp`, and encrypted version-2 `.spsp2dmp`
+containers are detected by their contents, not their filename. Interrupted
+`.tmp` and `.spsp2tmp` files can be analyzed when enough data survives to recover
+an ELF prefix. Encrypted input requires the optional `cryptography` dependency:
+
+```sh
+python -m pip install '.[crypto]'
+./psp2-core-parse analyze dump.spsp2dmp
+./psp2-core-parse info interrupted.spsp2tmp
+./psp2-core-parse extract dump.spsp2dmp --elf --output decrypted.psp2dmp
+```
+
+The encrypted container's section IDs, offsets, lengths, and IVs are read from
+its header. Section 0 is decrypted with AES-128-CBC and then decompressed as
+gzip. Other sections are inventoried but are not appended to the gzip stream.
+Logical section lengths need not be AES-aligned: the final ciphertext block is
+decrypted in full, then the payload is limited to its declared logical length.
+Only complete captured AES blocks are decrypted; truncated sections remain
+errors, even when the complete ELF can be recovered. `--strict` rejects these
+incomplete dumps. A complete container header is required; unsupported versions,
+encryption key IDs, and malformed or unfinalized section descriptors are rejected.
+
+**Container HMACs are not verified.** Structural completeness and successful gzip
+decompression do not authenticate the dump. This limitation is also reported by
+`info`, `analyze`, and their JSON output. Plain ELF/gzip input still works without
+installing the optional dependency.
+
+Kernel-crash dumps can contain a separately encrypted `KERNEL_INFO` ELF. Extract
+its decrypted segments explicitly:
+
+```sh
+./psp2-core-parse extract dump.spsp2dmp --kernel-info --output kernel.elf
+```
+
+This supports the reference layout with one wrapped-key `PT_NOTE`: an
+AES-128-CBC-wrapped 256-bit key and independently encrypted AES-256-CBC data
+segments. The nested ELF and its segments must be complete. Ordinary
+`--note KERNEL_INFO` extraction preserves the original note bytes, and `--elf`
+preserves the outer ELF, including the still-encrypted nested kernel data.
+Neither extraction modifies the input file.
+
+## Usage
+
 Use a matching decrypted Vita ELF for symbols, source locations, disassembly, and unwinding:
 
 ```sh
@@ -131,3 +176,11 @@ Triage and compare multiple dumps:
 ```
 
 Add `--json` to query commands for machine-readable output. Add `--strict` to reject structurally incomplete dumps.
+
+## Credits
+
+Encrypted system-dump and `KERNEL_INFO` support is adapted from
+[Princess-of-Sleeping's spsp2dmp-parser](https://github.com/Princess-of-Sleeping/spsp2dmp-parser),
+specifically commit `d8b5ca8d10c4fc9e286e0d5c810efc5231a2989b`. Her container
+definitions, keys, and decryption work made this support possible. The original
+MIT copyright notice is preserved in [LICENSE](LICENSE).
