@@ -220,6 +220,7 @@ class CoreDump:
     loads: list[LoadSegment] = field(default_factory=list)
     issues: list[ParseIssue] = field(default_factory=list)
     image: bytes = field(default=b"", repr=False)
+    encryption: Optional[dict] = None
 
     @classmethod
     def read(cls, path: Union[Path, str], *, strict: bool = False) -> "CoreDump":
@@ -228,12 +229,18 @@ class CoreDump:
             raw = path.read_bytes()
         except OSError as exc:
             raise ParseError(f"cannot read {path}: {exc}") from exc
-        compressed = raw.startswith(b"\x1f\x8b")
         issues: list[ParseIssue] = []
+        payload = raw
+        encryption = None
+        if raw.startswith(b"\0\0FACECS"):
+            from .spsp2dmp import decrypt_container
+
+            payload, encryption = decrypt_container(raw, issues)
+        compressed = payload.startswith(b"\x1f\x8b")
         if compressed:
-            image, compression_complete = _decompress_gzip(raw, issues)
+            image, compression_complete = _decompress_gzip(payload, issues)
         else:
-            image, compression_complete = raw, True
+            image, compression_complete = payload, True
         core = cls._from_elf(
             path,
             raw,
@@ -242,6 +249,7 @@ class CoreDump:
             compression_complete,
             issues,
         )
+        core.encryption = encryption
         if strict:
             failures = [issue for issue in core.issues if issue.severity == "error"]
             if failures:
@@ -494,6 +502,8 @@ class CoreDump:
             severities[issue.severity] = severities.get(issue.severity, 0) + 1
         return {
             "path": str(self.path),
+            "encrypted": self.encryption is not None,
+            "encryption": self.encryption,
             "compressed": self.compressed,
             "compression_complete": self.compression_complete,
             "complete": self.complete,

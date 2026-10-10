@@ -79,6 +79,9 @@ def render_analysis_report(result: dict) -> str:
     _heading(lines, "DUMP_FILE")
     lines.append(f"    {container['path']}")
     _heading(lines, "DUMP_FILE_ATTRIBUTES")
+    if container.get("encrypted"):
+        _field(lines, "Encryption", container["encryption"]["cipher"])
+        _field(lines, "HMAC verification", "not performed")
     _field(lines, "Compression", "gzip" if container["compressed"] else "none")
     _field(lines, "Compression complete", str(container["compression_complete"]).lower())
     _field(lines, "ELF class / machine", f"ELF32 / {container['machine']}")
