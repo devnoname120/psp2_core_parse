@@ -131,3 +131,81 @@ Triage and compare multiple dumps:
 ```
 
 Add `--json` to query commands for machine-readable output. Add `--strict` to reject structurally incomplete dumps.
+
+## Kernel dumps (.psp2kerndmp)
+
+Development-kit kernel panic and exception dumps are also supported. They use a
+different container from ELF `.psp2dmp` cores. The CLI detects the format from the
+header, including files renamed to another extension; `.psp2kerndmp` also selects
+the kernel parser for damaged headers. ELF/gzip signatures take precedence over
+the filename.
+
+Plaintext kernel dumps require no additional dependencies. For encrypted kernel
+dumps, install the optional AES backend:
+
+```sh
+python3 -m pip install '.[kernel]'
+```
+
+Both `0x38`- and `0x40`-byte blob headers are supported, with automatic AES-256-CBC
+decryption when the container's encryption flag is set. No separate decryption
+or conversion command is needed.
+
+```sh
+./psp2-core-parse analyze dump.psp2kerndmp
+./psp2-core-parse analyze dump.psp2kerndmp --json
+./psp2-core-parse info dump.psp2kerndmp
+./psp2-core-parse registers dump.psp2kerndmp
+./psp2-core-parse backtrace dump.psp2kerndmp
+./psp2-core-parse threads dump.psp2kerndmp
+./psp2-core-parse thread dump.psp2kerndmp crash
+./psp2-core-parse modules dump.psp2kerndmp
+./psp2-core-parse context dump.psp2kerndmp --json
+./psp2-core-parse validate dump.psp2kerndmp --strict
+./psp2-core-parse extract dump.psp2kerndmp --blob --output kernel-blob.bin
+./psp2-core-parse triage dumps/ --json
+./psp2-core-parse compare first.psp2kerndmp second.psp2kerndmp
+```
+
+The analysis includes firmware/session metadata, process/thread/CPU IDs, system
+time, source hashes, separate kernel and user backtraces, exception and saved
+thread registers, VFP registers, fault-status decoding, and waypoint records with
+module fingerprints/bases. Exception registers and saved thread registers remain
+separate: they need not describe the same point in execution. Unknown trailing
+blob records are retained in JSON and by `extract --blob`; extracted AES plaintext
+is not unpadded. AES-CBC does not authenticate the dump, so structural validation
+does not establish authenticity.
+
+Truncated inputs retain complete available records where the headers remain
+usable. `--strict` rejects structural damage. Unsupported header layouts, invalid
+offsets/sizes, and unknown encryption states produce explicit errors rather than
+guessed records.
+
+These dumps are diagnostic snapshots, **not full kernel memory images**. The
+module/thread lists contain only evidence present in the saved records, and the
+backtraces are producer-saved, not independently unwind-verified. ELF-note,
+captured-memory, and image-backed symbolization/disassembly commands are not
+available for this format. In particular, `--image` is rejected rather than
+silently ignored. Existing ELF-core commands are unchanged. Triage can include
+both formats.
+
+For Python callers, `read_dump()` selects the appropriate parser;
+`CoreDump.read()` remains the ELF-specific API:
+
+```python
+from psp2_core_parse import KernelDump, read_dump
+
+dump = read_dump("dump.psp2kerndmp", strict=True)
+if isinstance(dump, KernelDump):
+    result = dump.analysis()
+```
+
+### Credits
+
+Kernel-dump format definitions and decryption parameters are based on
+[Princess of Sleeping](https://github.com/Princess-of-Sleeping)'s
+[psp2kerndmp-parser](https://github.com/Princess-of-Sleeping/psp2kerndmp-parser),
+reference commit `b18a4ed29a56bfbdd289c749c2200bd9e646520a`.
+Her MIT copyright and permission notice is retained in
+[`LICENSES/psp2kerndmp-parser.txt`](LICENSES/psp2kerndmp-parser.txt) and included in
+the Python distribution.

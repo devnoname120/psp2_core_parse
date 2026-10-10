@@ -11,12 +11,16 @@ requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [{name = "psp2_core_parse contributors"}]
 
+[project.optional-dependencies]
+kernel = ["cryptography>=41"]
+
 [project.scripts]
 psp2-core-parse = "psp2_core_parse.cli:main"
 psp2_core_parse = "psp2_core_parse.cli:main"
 
 [tool.setuptools]
 packages = ["psp2_core_parse"]
+license-files = ["LICENSE", "LICENSES/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
