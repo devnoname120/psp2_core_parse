@@ -1,3 +1,6 @@
+# Copyright (c) 2026 devnoname120
+# SPDX-License-Identifier: MIT
+
 """Development-kit kernel dumps, based on Princess of Sleeping's parser.
 
 Format definitions and decryption parameters:

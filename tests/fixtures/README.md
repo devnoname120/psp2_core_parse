@@ -1,3 +1,8 @@
+<!--
+Copyright (c) 2026 devnoname120
+SPDX-License-Identifier: MIT
+-->
+
 # Kernel-dump fixture
 
 `kernel_panic.encrypted.psp2kerndmp` is synthetic, not a device capture. Its
