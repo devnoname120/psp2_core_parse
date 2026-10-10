@@ -137,20 +137,6 @@ Extract raw evidence:
 ./psp2-core-parse system2 dump.psp2dmp --output display.caf
 ```
 
-Encrypted system dumps can also be extracted as ELF images:
-
-```sh
-./psp2-core-parse extract dump.spsp2dmp --elf --output outer.elf
-./psp2-core-parse extract dump.spsp2dmp --kernel-info --output kernel.elf
-```
-
-System-dump recovery is lenient by default, including interrupted `.spsp2tmp`
-files. Available plaintext prefixes are preserved, with warnings on stderr and
-completeness/issue metadata in JSON; missing bytes are not invented. The known
-eight-byte version-8 `KERNEL_INFO` note-length discrepancy is recovered with a
-warning without changing the original input. Use `--strict` when incomplete
-output is unwanted. Container HMACs are not verified.
-
 Triage and compare multiple dumps:
 
 ```sh
