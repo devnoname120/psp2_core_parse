@@ -67,7 +67,10 @@ def _hexdump(data: bytes, address: int) -> str:
 
 
 def _add_core_arguments(parser: argparse.ArgumentParser, *, images: bool = False) -> None:
-    parser.add_argument("core", type=Path, help="Vita .psp2dmp, .psp2kerndmp, or interrupted .tmp dump")
+    parser.add_argument(
+        "core", type=Path,
+        help="Vita .psp2dmp/.spsp2dmp/.psp2kerndmp or interrupted .tmp/.spsp2tmp dump (detected by content)",
+    )
     parser.add_argument("--strict", action="store_true", help="reject any structurally incomplete input")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     if images:
@@ -243,9 +246,11 @@ def build_parser() -> argparse.ArgumentParser:
     item.add_argument("--strict", action="store_true")
     item.add_argument("--json", action="store_true")
 
-    item = commands.add_parser("extract", help="extract a note, load segment, or memory range")
+    item = commands.add_parser("extract", help="extract an ELF image, note, load segment, or memory range")
     _add_core_arguments(item)
     source = item.add_mutually_exclusive_group(required=True)
+    source.add_argument("--elf", action="store_true", help="write the decrypted, decompressed ELF image")
+    source.add_argument("--kernel-info", action="store_true", help="decrypt KERNEL_INFO into a standalone ELF")
     source.add_argument("--note", metavar="NAME")
     source.add_argument("--load", type=int, metavar="PROGRAM_HEADER_INDEX")
     source.add_argument("--memory", nargs=2, type=integer, metavar=("ADDRESS", "SIZE"))
@@ -377,6 +382,8 @@ def command_info(args) -> tuple[dict, str]:
         f"Issues: {result['issue_counts'] or 'none'}",
         f"SHA-256: {core.raw_file_sha256}",
     ))
+    if core.encryption is not None:
+        text += f"\nEncryption: {core.encryption['cipher']} (SPSP2DMP); HMACs: unverified"
     return result, text
 
 
@@ -1184,9 +1191,20 @@ def command_extract(args) -> tuple[dict, str]:
     core = _core(args)
     if args.blob:
         raise ParseError("extract --blob requires a .psp2kerndmp input")
+    if args.output.exists() and args.output.samefile(core.path):
+        raise ParseError("extraction output must not overwrite the input dump")
     if args.output.exists() and not args.force:
         raise ParseError(f"{args.output} exists; use --force to overwrite it")
-    if args.note is not None:
+    if args.elf:
+        data = core.image; source = "ELF image"
+    elif args.kernel_info:
+        from .spsp2dmp import decrypt_kernel_info
+
+        note = core.note("KERNEL_INFO")
+        if note is None:
+            raise ParseError("KERNEL_INFO was not recovered")
+        data = decrypt_kernel_info(note.description); source = "decrypted KERNEL_INFO ELF"
+    elif args.note is not None:
         note = core.note(args.note)
         if note is None:
             raise ParseError(f"note {args.note!r} was not found")

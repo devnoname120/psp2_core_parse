@@ -141,6 +141,8 @@ def command_kernel_dump(args, dump: KernelDump) -> tuple[object, str]:
         return result, "\n".join(lines)
     if not args.blob:
         raise ParseError("ELF notes and captured memory are not available for .psp2kerndmp; use extract --blob")
+    if args.output.exists() and args.output.samefile(dump.path):
+        raise ParseError("extraction output must not overwrite the input dump")
     if args.output.exists() and not args.force:
         raise ParseError(f"{args.output} exists; use --force to overwrite it")
     args.output.parent.mkdir(parents=True, exist_ok=True)

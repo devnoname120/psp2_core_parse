@@ -13,6 +13,7 @@ authors = [{name = "psp2_core_parse contributors"}]
 
 [project.optional-dependencies]
 kernel = ["cryptography>=41"]
+crypto = ["cryptography>=3.4"]
 
 [project.scripts]
 psp2-core-parse = "psp2_core_parse.cli:main"

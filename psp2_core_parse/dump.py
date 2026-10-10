@@ -15,7 +15,7 @@ def read_dump(path: Union[Path, str], *, strict: bool = False) -> Union[CoreDump
             prefix = stream.read(0x34)
     except OSError as exc:
         raise ParseError(f"cannot read {path}: {exc}") from exc
-    if prefix.startswith((b"\x7fELF", b"\x1f\x8b")):
+    if prefix.startswith((b"\x7fELF", b"\x1f\x8b", b"\0\0FACECS")):
         return CoreDump.read(path, strict=strict)
     if looks_like_kernel_dump(prefix) or path.suffix.lower() == ".psp2kerndmp":
         return KernelDump.read(path, strict=strict)

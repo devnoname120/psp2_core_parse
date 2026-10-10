@@ -386,3 +386,21 @@ def test_blob_extraction_is_rejected_for_elf(tmp_path, capsys):
     assert main(["extract", str(path), "--blob", "--output", str(output)]) == 2
     assert "requires a .psp2kerndmp" in capsys.readouterr().err
     assert not output.exists()
+
+
+@pytest.mark.parametrize("alias", ["same-path", "symlink", "hardlink"])
+def test_forced_blob_extraction_cannot_overwrite_input(tmp_path, capsys, alias):
+    path = write_dump(tmp_path)
+    raw = path.read_bytes()
+    output = path
+    if alias != "same-path":
+        output = tmp_path / "alias.bin"
+        if alias == "symlink":
+            output.symlink_to(path)
+        else:
+            import os
+
+            os.link(path, output)
+    assert main(["extract", str(path), "--blob", "--output", str(output), "--force"]) == 2
+    assert "input" in capsys.readouterr().err
+    assert path.read_bytes() == raw
