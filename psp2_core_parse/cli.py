@@ -11,8 +11,11 @@ from typing import Iterable, Optional
 from . import __version__
 from .analysis import analyze
 from .core import CoreDump, ParseError
+from .dump import read_dump
 from .execution import AddressLocation, ExecutionContext, Thread
 from .kernel import KernelObjectRegistry
+from .kerndump import KernelDump
+from .kerndump_cli import command_kernel_dump
 from .support import decode_note, parse_memory_blocks, supporting_context
 from .symbols import SourcePathMap, Symbolizer, ToolError, disassemble_address
 from .tty import TtyInfo
@@ -66,7 +69,7 @@ def _hexdump(data: bytes, address: int) -> str:
 def _add_core_arguments(parser: argparse.ArgumentParser, *, images: bool = False) -> None:
     parser.add_argument(
         "core", type=Path,
-        help="Vita .psp2dmp/.spsp2dmp or interrupted .tmp/.spsp2tmp dump (detected by content)",
+        help="Vita .psp2dmp/.spsp2dmp/.psp2kerndmp or interrupted .tmp/.spsp2tmp dump (detected by content)",
     )
     parser.add_argument("--strict", action="store_true", help="reject any structurally incomplete input")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
@@ -251,13 +254,19 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--note", metavar="NAME")
     source.add_argument("--load", type=int, metavar="PROGRAM_HEADER_INDEX")
     source.add_argument("--memory", nargs=2, type=integer, metavar=("ADDRESS", "SIZE"))
+    source.add_argument("--blob", action="store_true", help="extract a .psp2kerndmp plaintext blob")
     item.add_argument("--output", required=True, type=Path)
     item.add_argument("--force", action="store_true")
     return parser
 
 
 def _core(args) -> CoreDump:
-    return CoreDump.read(args.core, strict=args.strict)
+    core = getattr(args, "_loaded_core", None)
+    if core is None:
+        core = read_dump(args.core, strict=args.strict)
+    if not isinstance(core, CoreDump):
+        raise ParseError(f"{args.command} requires an ELF core")
+    return core
 
 
 def _execution(core: CoreDump) -> ExecutionContext:
@@ -1105,16 +1114,22 @@ def _paths(paths: Iterable[Path]) -> list[Path]:
     return result
 
 
+def _analyze_path(path: Path, *, strict: bool = False) -> dict:
+    core = read_dump(path, strict=strict)
+    if isinstance(core, KernelDump):
+        return core.analysis()
+    return analyze(core, tty_lines=0, stack_candidates=0)
+
+
 def command_triage(args) -> tuple[dict, str]:
     rows = []; failures = []
     for path in _paths(args.paths):
         try:
-            core = CoreDump.read(path, strict=args.strict)
-            value = analyze(core, tty_lines=0, stack_candidates=0)
+            value = _analyze_path(path, strict=args.strict)
             thread = value.get("primary_crash_thread") or {}
             registers = thread.get("registers") or {}
             rows.append({
-                "path": str(path), "complete": core.complete, "classification": value["classification"],
+                "path": str(path), "complete": value["dump"]["complete"], "classification": value["classification"],
                 "bucket": value["failure_bucket"]["canonical"], "bucket_sha256": value["failure_bucket"]["sha256"],
                 "thread": thread.get("name"), "pc": registers.get("pc"),
                 "pc_location": (thread.get("pc_location") or {}).get("notation"),
@@ -1154,13 +1169,14 @@ def _compare_view(value: dict) -> dict:
         "pc_location": thread.get("pc_location"), "lr_location": thread.get("lr_location"),
         "fault": value.get("fault"), "thread_overview": value.get("thread_overview"),
         "kernel_wait_graph": value.get("kernel_objects", {}).get("wait_graph"),
+        "kernel_dump": value.get("kernel_dump"),
         "budgets": value.get("budgets"),
     }
 
 
 def command_compare(args) -> tuple[dict, str]:
-    left = _compare_view(analyze(CoreDump.read(args.left, strict=args.strict), tty_lines=0))
-    right = _compare_view(analyze(CoreDump.read(args.right, strict=args.strict), tty_lines=0))
+    left = _compare_view(_analyze_path(args.left, strict=args.strict))
+    right = _compare_view(_analyze_path(args.right, strict=args.strict))
     differences = {}
     for key in left:
         if left[key] != right[key]:
@@ -1173,6 +1189,8 @@ def command_compare(args) -> tuple[dict, str]:
 
 def command_extract(args) -> tuple[dict, str]:
     core = _core(args)
+    if args.blob:
+        raise ParseError("extract --blob requires a .psp2kerndmp input")
     if args.output.exists() and args.output.samefile(core.path):
         raise ParseError("extraction output must not overwrite the input dump")
     if args.output.exists() and not args.force:
@@ -1229,7 +1247,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        result, text = COMMANDS[args.command](args)
+        if hasattr(args, "core"):
+            args._loaded_core = read_dump(args.core, strict=args.strict)
+        if isinstance(getattr(args, "_loaded_core", None), KernelDump):
+            result, text = command_kernel_dump(args, args._loaded_core)
+        else:
+            result, text = COMMANDS[args.command](args)
     except (ParseError, ToolError, OSError, struct.error, ValueError) as exc:
         print(f"psp2-core-parse: error: {exc}", file=sys.stderr)
         return 2

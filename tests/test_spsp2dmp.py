@@ -72,6 +72,18 @@ def test_encrypted_input_is_detected_by_magic(tmp_path, suffix):
     assert any(issue.code == "spsp2dmp-hmac-unverified" for issue in core.issues)
 
 
+@pytest.mark.parametrize("suffix", [".spsp2dmp", ".bin", ".psp2kerndmp"])
+def test_read_dump_routes_encrypted_system_dump_by_magic(tmp_path, capsys, suffix):
+    from psp2_core_parse import read_dump
+
+    path = write_dump(tmp_path, make_container(), suffix)
+    dump = read_dump(path, strict=True)
+    assert isinstance(dump, CoreDump)
+    assert dump.image == make_core()
+    assert main(["info", str(path), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["encrypted"] is True
+
+
 @pytest.mark.parametrize("reverse", [False, True])
 def test_section_ids_and_offsets_are_not_hardcoded(tmp_path, reverse):
     raw = make_container(header_size=0x190, reverse=reverse)
